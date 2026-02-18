@@ -16,11 +16,11 @@ The most common pattern for passing Power BI parameters into R is to build the e
 // Power Query M — UNSAFE
 let
     Source = R.Execute(
-        "library(rnoaa)#(lf)" &
-        "station <- c(""" & Station & """)#(lf)" &
-        "wban    <- c(""" & WBAN    & """)#(lf)" &
-        "years   <- c("   & Years   & ")#(lf)" &
-        "output  <- ghcnd_search(station, wban, years)"
+        "library(mylib)#(lf)" &
+        "region     <- c(""" & Region    & """)#(lf)" &
+        "category   <- c(""" & Category  & """)#(lf)" &
+        "start_year <- c("   & StartYear & ")#(lf)" &
+        "output     <- pull_metrics(region, category, start_year)"
     )
 in
     Source
@@ -30,9 +30,9 @@ If any of those parameter values contain a `"` character, a `#(lf)` sequence, or
 
 | Parameter | Injected value | What R actually executes |
 |---|---|---|
-| `Station` | `USW") #` | Closes the string early, comments out the rest |
-| `Years` | `2020); system("del C:/data")` | Executes an arbitrary system command |
-| `WBAN` | `""` (blank) | Silently passes an empty string — wrong type, no error |
+| `Region` | `East") #` | Closes the string early, comments out the rest |
+| `StartYear` | `2020); system("del C:/data")` | Executes an arbitrary system command |
+| `Category` | `""` (blank) | Silently passes an empty string — wrong type, no error |
 
 ### The fix: pass a parameter table, extract inside R
 
@@ -43,10 +43,11 @@ Instead of concatenating into the script string, load a parameter table into R a
 let
     Source = R.Execute(
         "library(pbiparams)#(lf)" &
-        "station <- safe_param(dataset, ""Station"", target = ""character"")#(lf)" &
-        "wban    <- safe_param(dataset, ""WBAN"",    target = ""character"")#(lf)" &
-        "years   <- safe_param(dataset, ""Years"",   target = ""integer"")#(lf)" &
-        "output  <- ghcnd_search(station, wban, years)",
+        "library(mylib)#(lf)" &
+        "region     <- safe_param(dataset, ""Region"",    target = ""character"")#(lf)" &
+        "category   <- safe_param(dataset, ""Category"",  target = ""character"")#(lf)" &
+        "start_year <- safe_param(dataset, ""StartYear"", target = ""integer"")#(lf)" &
+        "output     <- pull_metrics(region, category, start_year)",
         [dataset = ParamTable]   // <-- ParamTable is passed as a data.frame
     )
 in

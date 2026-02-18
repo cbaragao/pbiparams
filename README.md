@@ -8,7 +8,56 @@ An R package for safely extracting typed values from a Power BI parameter table 
 
 ## The Problem
 
-Power BI passes parameters to R scripts as a data.frame. A common but unsafe pattern is concatenating those raw string values directly into R expressions.
+### The root cause: `R.Execute()` with M string concatenation
+
+The most common pattern for passing Power BI parameters into R is to build the entire R script as an M string using `&` concatenation inside `R.Execute()`:
+
+```
+// Power Query M — UNSAFE
+let
+    Source = R.Execute(
+        "library(rnoaa)#(lf)" &
+        "station <- c(""" & Station & """)#(lf)" &
+        "wban    <- c(""" & WBAN    & """)#(lf)" &
+        "years   <- c("   & Years   & ")#(lf)" &
+        "output  <- ghcnd_search(station, wban, years)"
+    )
+in
+    Source
+```
+
+If any of those parameter values contain a `"` character, a `#(lf)` sequence, or valid R code, it gets injected verbatim into the script string before R ever sees it. For example:
+
+| Parameter | Injected value | What R actually executes |
+|---|---|---|
+| `Station` | `USW") #` | Closes the string early, comments out the rest |
+| `Years` | `2020); system("del C:/data")` | Executes an arbitrary system command |
+| `WBAN` | `""` (blank) | Silently passes an empty string — wrong type, no error |
+
+### The fix: pass a parameter table, extract inside R
+
+Instead of concatenating into the script string, load a parameter table into R and extract each value safely:
+
+```
+// Power Query M — SAFE
+let
+    Source = R.Execute(
+        "library(pbiparams)#(lf)" &
+        "station <- safe_param(dataset, ""Station"", target = ""character"")#(lf)" &
+        "wban    <- safe_param(dataset, ""WBAN"",    target = ""character"")#(lf)" &
+        "years   <- safe_param(dataset, ""Years"",   target = ""integer"")#(lf)" &
+        "output  <- ghcnd_search(station, wban, years)",
+        [dataset = ParamTable]   // <-- ParamTable is passed as a data.frame
+    )
+in
+    Source
+```
+
+The parameter values never touch the script string. They arrive as cells in a data.frame and are extracted and coerced by R.
+
+---
+
+### Additional R-side examples
 
 ### Example 1: file path injection
 
